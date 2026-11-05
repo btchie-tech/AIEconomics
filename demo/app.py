@@ -101,7 +101,7 @@ def generate_macro_summary(api_key, context_data):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.8-flash',
                 contents=prompt
             )
             return response.text
