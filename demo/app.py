@@ -2,8 +2,10 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import yfinance as yf
+import time
 from fredapi import Fred
 from google import genai
+
 
 # 頁面基本配置
 st.set_page_config(
@@ -97,11 +99,20 @@ def generate_macro_summary(api_key, context_data):
     請直接輸出分析短評，條理清晰，觀點切中要害。
     """
     
-    response = client.models.generate_content(
-        model='gemini-3.8-flash',
-        contents=prompt
-    )
-    return response.text
+    # 進行最多 3 次自動重試（應對 503 暫時性過載）
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
+            return response.text
+        except Exception as e:
+            if "503" in str(e) and attempt < max_retries - 1:
+                time.sleep(2 * (attempt + 1))  # 等待 2 秒、4 秒後重試
+                continue
+            raise e
 
 
 # 主頁面渲染邏輯
@@ -184,16 +195,19 @@ if fred_key:
         st.subheader("🤖 AI 總體經濟即時短評")
 
         if st.button("✨ 產生 AI 總體經濟摘要", type="primary"):
-            if not gemini_key:
-                st.warning("請先在左側邊欄輸入 Gemini API Key！")
-            else:
-                with st.spinner("AI 正在分析最新經濟數據中..."):
-                    try:
-                        summary = generate_macro_summary(gemini_key, latest_values)
-                        st.success("分析完成！")
-                        st.markdown(summary)
-                    except Exception as e:
-                        st.error(f"AI 生成失敗: {e}")
+    if not gemini_key:
+        st.warning("請先在左側邊欄輸入 Gemini API Key！")
+    else:
+        with st.spinner("AI 正在分析最新經濟數據中 (如遇伺服器忙碌將自動重試)..."):
+            try:
+                summary = generate_macro_summary(gemini_key, latest_values)
+                st.success("分析完成！")
+                st.markdown(summary)
+            except Exception as e:
+                if "503" in str(e):
+                    st.error("⚠️ Google Gemini API 目前全球流量過載（503），請等待 5~10 秒後重新點擊按鈕。")
+                else:
+                    st.error(f"AI 生成失敗: {e}")
 
     except Exception as e:
         st.error(f"數據讀取失敗，請確認 FRED API Key 是否正確。錯誤訊息: {e}")
