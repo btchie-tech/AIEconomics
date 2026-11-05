@@ -1,11 +1,10 @@
+import time
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import yfinance as yf
-import time
 from fredapi import Fred
 from google import genai
-
 
 # 頁面基本配置
 st.set_page_config(
@@ -81,9 +80,8 @@ def get_market_data():
     return df
 
 
-# 呼叫 Gemini 產出分析短評
+# 呼叫 Gemini 產出分析短評（含 503 暫時過載自動重試）
 def generate_macro_summary(api_key, context_data):
-    # 初始化最新版 google-genai Client
     client = genai.Client(api_key=api_key)
     
     prompt = f"""
@@ -99,7 +97,6 @@ def generate_macro_summary(api_key, context_data):
     請直接輸出分析短評，條理清晰，觀點切中要害。
     """
     
-    # 進行最多 3 次自動重試（應對 503 暫時性過載）
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -110,7 +107,7 @@ def generate_macro_summary(api_key, context_data):
             return response.text
         except Exception as e:
             if "503" in str(e) and attempt < max_retries - 1:
-                time.sleep(2 * (attempt + 1))  # 等待 2 秒、4 秒後重試
+                time.sleep(2 * (attempt + 1))
                 continue
             raise e
 
@@ -125,7 +122,6 @@ if fred_key:
         st.subheader("📊 關鍵總體經濟指標 (FRED)")
         col1, col2, col3, col4, col5 = st.columns(5)
         
-        # 紀錄最新數據供 AI 提示詞使用
         latest_values = {}
 
         if "CPI 物價指數" in macro_df.columns:
@@ -195,19 +191,19 @@ if fred_key:
         st.subheader("🤖 AI 總體經濟即時短評")
 
         if st.button("✨ 產生 AI 總體經濟摘要", type="primary"):
-    if not gemini_key:
-        st.warning("請先在左側邊欄輸入 Gemini API Key！")
-    else:
-        with st.spinner("AI 正在分析最新經濟數據中 (如遇伺服器忙碌將自動重試)..."):
-            try:
-                summary = generate_macro_summary(gemini_key, latest_values)
-                st.success("分析完成！")
-                st.markdown(summary)
-            except Exception as e:
-                if "503" in str(e):
-                    st.error("⚠️ Google Gemini API 目前全球流量過載（503），請等待 5~10 秒後重新點擊按鈕。")
-                else:
-                    st.error(f"AI 生成失敗: {e}")
+            if not gemini_key:
+                st.warning("請先在左側邊欄輸入 Gemini API Key！")
+            else:
+                with st.spinner("AI 正在分析最新經濟數據中 (如遇伺服器忙碌將自動重試)..."):
+                    try:
+                        summary = generate_macro_summary(gemini_key, latest_values)
+                        st.success("分析完成！")
+                        st.markdown(summary)
+                    except Exception as e:
+                        if "503" in str(e):
+                            st.error("⚠️ Google Gemini API 目前全球流量過載（503），請等待 5~10 秒後重新點擊按鈕。")
+                        else:
+                            st.error(f"AI 生成失敗: {e}")
 
     except Exception as e:
         st.error(f"數據讀取失敗，請確認 FRED API Key 是否正確。錯誤訊息: {e}")
